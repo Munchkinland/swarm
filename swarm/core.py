@@ -2,17 +2,17 @@
 import copy
 import json
 from collections import defaultdict
-from typing import List, Callable, Union
+from typing import List
 
 # Package/library imports
+import os
+from dotenv import load_dotenv  # Importar dotenv para cargar variables de entorno
 from openai import OpenAI
-
 
 # Local imports
 from .util import function_to_json, debug_print, merge_chunk
 from .types import (
     Agent,
-    AgentFunction,
     ChatCompletionMessage,
     ChatCompletionMessageToolCall,
     Function,
@@ -22,11 +22,19 @@ from .types import (
 
 __CTX_VARS_NAME__ = "context_variables"
 
+# Cargar las variables de entorno desde el archivo .env
+load_dotenv()
 
 class Swarm:
     def __init__(self, client=None):
+        # Obtener la API key desde las variables de entorno
+        openai_api_key = os.getenv('OPENAI_API_KEY')
+        
+        if not openai_api_key:
+            raise ValueError("La clave de API de OpenAI no está definida en las variables de entorno.")
+
         if not client:
-            client = OpenAI()
+            client = OpenAI(api_key=openai_api_key)  # Usar la clave de OpenAI
         self.client = client
 
     def get_chat_completion(
@@ -89,13 +97,14 @@ class Swarm:
     def handle_tool_calls(
         self,
         tool_calls: List[ChatCompletionMessageToolCall],
-        functions: List[AgentFunction],
+        functions: List,
         context_variables: dict,
         debug: bool,
     ) -> Response:
         function_map = {f.__name__: f for f in functions}
         partial_response = Response(
-            messages=[], agent=None, context_variables={})
+            messages=[], agent=None, context_variables={}
+        )
 
         for tool_call in tool_calls:
             name = tool_call.function.name
@@ -113,7 +122,8 @@ class Swarm:
                 continue
             args = json.loads(tool_call.function.arguments)
             debug_print(
-                debug, f"Processing tool call: {name} with arguments {args}")
+                debug, f"Processing tool call: {name} with arguments {args}"
+            )
 
             func = function_map[name]
             # pass context_variables to agent functions
@@ -189,7 +199,8 @@ class Swarm:
             yield {"delim": "end"}
 
             message["tool_calls"] = list(
-                message.get("tool_calls", {}).values())
+                message.get("tool_calls", {}).values()
+            )
             if not message["tool_calls"]:
                 message["tool_calls"] = None
             debug_print(debug, "Received completion:", message)
